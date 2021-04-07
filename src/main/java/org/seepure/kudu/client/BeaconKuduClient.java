@@ -1,12 +1,10 @@
 package org.seepure.kudu.client;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.concurrent.atomic.AtomicLong;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.kudu.ColumnSchema;
 import org.apache.kudu.Schema;
@@ -16,33 +14,13 @@ import org.apache.kudu.client.KuduSession;
 import org.apache.kudu.client.KuduTable;
 import org.apache.kudu.client.PartialRow;
 import org.apache.kudu.client.Upsert;
+import org.seepure.kudu.client.vo.KuduOpResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * <p>
- * AbstractKuduWriter is in charge of :
- *  <li>1. holding common properties
- *  <li>2. maintaining Single-Instance of {@link org.apache.kudu.client.KuduClient}
- *  <li>3. maintaining metadata (or say table schema)
- *  <li>4. providing basic method for kudu-insert operation.
- * </P>
- *
- * <p>
- * Life cycle:
- *  <li>1. init</li>
- *  <li>2. addRecord<li/>
- *  <li>3. flush if condition satisfied</li>
- *  <li>4. close </li>
- * </p>
- *
- * <p>Thread model:
- *  depends on sub-class implement
- * </p>
- */
+public abstract class BeaconKuduClient {
 
-public abstract class AbstractKuduWriter {
-    private static Logger LOG = LoggerFactory.getLogger(AbstractKuduWriter.class);
+    private static Logger LOG = LoggerFactory.getLogger(BeaconKuduClient.class);
     protected static final String DEFAULT_COMMIT_SIZE = "2400";
     protected static final String DEFAULT_BUFFERSPACE = "5000";
 
@@ -50,26 +28,24 @@ public abstract class AbstractKuduWriter {
         DnsUtils.addDnsCache();
     }
 
-    protected KuduClient client;
+    protected static volatile KuduClient client;
+    protected static volatile KuduTable kuduTable;
+    protected static volatile Map<String, ColumnSchema> schemaMap;
     protected KuduSession session;
     protected String masterIpPorts;
     protected String dbName;
     protected String tableName;
-    protected KuduTable kuduTable;
-    protected volatile Map<String, ColumnSchema> schemaMap;
-    protected List<Map<String, String>> recordList;
+
 
     protected final int bufferSpace;
     protected final int commitSize;
-    protected final boolean sortByKeyEnable;
-    protected final String sortKey;
-    protected AtomicLong counter;
-
 
     protected Properties properties;
 
-    public AbstractKuduWriter(Properties properties) {
+    public BeaconKuduClient(Properties properties) throws KuduException {
+
         this.properties = properties;
+
         masterIpPorts = properties.getProperty(ConfigConstant.KUDU_MASTER_IP_PORTS);
         dbName = properties.getProperty(ConfigConstant.KUDU_DB_NAME);
         tableName = properties.getProperty(ConfigConstant.KUDU_TABLE_NAME);
@@ -79,42 +55,42 @@ public abstract class AbstractKuduWriter {
         commitSize = Integer.parseInt(properties.getProperty(ConfigConstant.KUDU_COMMIT_SIZE, DEFAULT_COMMIT_SIZE));
         bufferSpace = Integer.parseInt(properties.getProperty(ConfigConstant.KUDU_BUFFER_SPACE, DEFAULT_BUFFERSPACE));
 
-        sortByKeyEnable = Boolean.parseBoolean(properties.getProperty(ConfigConstant.WRITE_SORT_BY_KEY_ENABLE,"false"));
-        sortKey = properties.getProperty(ConfigConstant.SORT_KEY, "event_time");
 
-        recordList = new ArrayList<Map<String, String>>();
-    }
-
-    public void init() throws Exception {
-        //todo 打印必要的配置信息
         LOG.info(getClass().getSimpleName() + " is initializing ...");
         LOG.info("config properties: " + properties.toString());
         LOG.info(String.format("master_ip_ports: %s, table_name: %s", masterIpPorts, tableName));
         LOG.info(String.format("commitSize: %d, bufferSpace: %d", commitSize, bufferSpace));
 
         if (client == null) {
-            client = new KuduClient.KuduClientBuilder(masterIpPorts).build();
-            LOG.info("KuduClient has been built. ");
+            synchronized (BeaconKuduClient.class) {
+                if (client == null) {
+                    client = new KuduClient.KuduClientBuilder(masterIpPorts).build();
+                    LOG.info("KuduClient has been built. ");
+                    kuduTable = client.openTable(tableName);
+                    Schema schema = kuduTable.getSchema();
+                    schemaMap = new HashMap<String, ColumnSchema>();
+                    for (ColumnSchema columnSchema : schema.getColumns()) {
+                        schemaMap.put(columnSchema.getName(), columnSchema);
+                    }
+                    LOG.info("KuduClient has open table: " + tableName + ", schemaMap: " + schemaMap.toString());
+                }
+            }
         }
-        kuduTable = client.openTable(tableName);
-        Schema schema = kuduTable.getSchema();
-        schemaMap = new HashMap<String, ColumnSchema>();
-        for (ColumnSchema columnSchema : schema.getColumns()) {
-            schemaMap.put(columnSchema.getName(), columnSchema);
-        }
-        LOG.info("KuduClient has open table: " + tableName + ", schemaMap: " + schemaMap.toString());
+
+        init();
     }
 
-    public void close() throws KuduException {
-        if (client != null) {
-            client.close();
-            LOG.info("close kudu client");
-        }
+    protected void init() throws KuduException {
+
     }
 
-    public abstract void addRecord(Map<String, String> record) throws KuduException;
+    public abstract KuduOpResult upsert(Map<String, String> record);
 
-    public abstract void flush() throws KuduException;
+    public abstract KuduOpResult upsert(List<Map<String, String>> records);
+
+    public abstract KuduOpResult delete(Map<String, String> record);
+
+    public abstract KuduOpResult delete(List<Map<String, String>> records);
 
     public Map<String, ColumnSchema> getSchemaMap() {
         return Collections.unmodifiableMap(schemaMap);
@@ -125,7 +101,7 @@ public abstract class AbstractKuduWriter {
         table.newUpdate();
         PartialRow row = upsert.getRow();
         if (LOG.isDebugEnabled()) {
-            LOG.debug("convert into KuduInsert with map: " + value);
+            LOG.debug("convert into KuduUpsert with map: " + value);
         }
 
         for (String colName : value.keySet()) {
@@ -205,11 +181,4 @@ public abstract class AbstractKuduWriter {
         partialRow.addFloat(col, fVal);
     }
 
-    public List<Map<String, String>> getRecordList() {
-        return recordList;
-    }
-
-    public void setRecordList(List<Map<String, String>> recordList) {
-        this.recordList = recordList;
-    }
 }
