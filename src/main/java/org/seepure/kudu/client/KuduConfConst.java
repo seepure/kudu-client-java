@@ -1,6 +1,6 @@
 package org.seepure.kudu.client;
 
-public class ConfigConstant {
+public class KuduConfConst {
 
     public static final String KUDU_MASTER_IP_PORTS = "kudu.master_ip_ports";
     public static final String KUDU_DB_NAME = "kudu.db_name";

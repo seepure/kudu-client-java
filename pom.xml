@@ -64,7 +64,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>org.seepure.db.redisson.RedissonBaisc</mainClass>
+                            <mainClass>org.seepure.kudu.client.Application</mainClass>
                         </manifest>
                     </archive>
                     <descriptorRefs>

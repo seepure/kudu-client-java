@@ -70,17 +70,17 @@ public abstract class AbstractKuduWriter {
 
     public AbstractKuduWriter(Properties properties) {
         this.properties = properties;
-        masterIpPorts = properties.getProperty(ConfigConstant.KUDU_MASTER_IP_PORTS);
-        dbName = properties.getProperty(ConfigConstant.KUDU_DB_NAME);
-        tableName = properties.getProperty(ConfigConstant.KUDU_TABLE_NAME);
+        masterIpPorts = properties.getProperty(KuduConfConst.KUDU_MASTER_IP_PORTS);
+        dbName = properties.getProperty(KuduConfConst.KUDU_DB_NAME);
+        tableName = properties.getProperty(KuduConfConst.KUDU_TABLE_NAME);
         if (StringUtils.isNotBlank(dbName)) {
             tableName = dbName + "." + tableName;
         }
-        commitSize = Integer.parseInt(properties.getProperty(ConfigConstant.KUDU_COMMIT_SIZE, DEFAULT_COMMIT_SIZE));
-        bufferSpace = Integer.parseInt(properties.getProperty(ConfigConstant.KUDU_BUFFER_SPACE, DEFAULT_BUFFERSPACE));
+        commitSize = Integer.parseInt(properties.getProperty(KuduConfConst.KUDU_COMMIT_SIZE, DEFAULT_COMMIT_SIZE));
+        bufferSpace = Integer.parseInt(properties.getProperty(KuduConfConst.KUDU_BUFFER_SPACE, DEFAULT_BUFFERSPACE));
 
-        sortByKeyEnable = Boolean.parseBoolean(properties.getProperty(ConfigConstant.WRITE_SORT_BY_KEY_ENABLE,"false"));
-        sortKey = properties.getProperty(ConfigConstant.SORT_KEY, "event_time");
+        sortByKeyEnable = Boolean.parseBoolean(properties.getProperty(KuduConfConst.WRITE_SORT_BY_KEY_ENABLE,"false"));
+        sortKey = properties.getProperty(KuduConfConst.SORT_KEY, "event_time");
 
         recordList = new ArrayList<Map<String, String>>();
     }

@@ -1,6 +1,6 @@
 package org.seepure.kudu.client;
 
-import static org.seepure.kudu.client.ConfigConstant.FLUSH_INTERVAL;
+import static org.seepure.kudu.client.KuduConfConst.FLUSH_INTERVAL;
 
 import java.util.Comparator;
 import java.util.List;
